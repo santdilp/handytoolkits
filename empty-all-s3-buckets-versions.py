@@ -1,6 +1,7 @@
 import boto3
 from botocore.exceptions import ClientError
 
+
 def check_bucket_versioning(bucket):
     """Check if bucket has versioning enabled"""
     try:
@@ -14,32 +15,27 @@ def delete_all_versions(bucket):
     """Delete all versions and delete markers in the bucket"""
     try:
         print(f"Deleting all versions from {bucket.name}...")
-        # Delete all object versions
-        object_versions = bucket.object_versions.all()
-        delete_markers = []
+        
+        # Delete all object versions (including delete markers)
         versions = []
-
-        for obj_version in object_versions:
-            if obj_version.is_latest:
-                if hasattr(obj_version, 'delete_marker') and obj_version.delete_marker:
-                    delete_markers.append({'Key': obj_version.object_key, 
-                                        'VersionId': obj_version.id})
-                else:
-                    versions.append({'Key': obj_version.object_key, 
-                                   'VersionId': obj_version.id})
-
-        # Delete non-current versions
+        for obj_version in bucket.object_versions.all():
+            versions.append({'Key': obj_version.object_key, 
+                           'VersionId': obj_version.id})
+            # Process deletions in batches of 1000 (AWS limit)
+            if len(versions) >= 1000:
+                bucket.delete_objects(Delete={'Objects': versions})
+                versions = []
+        
+        # Delete remaining versions
         if versions:
             bucket.delete_objects(Delete={'Objects': versions})
-        # Delete delete markers
-        if delete_markers:
-            bucket.delete_objects(Delete={'Objects': delete_markers})
             
         print("All versions deleted successfully")
         return True
     except ClientError as e:
         print(f"Error deleting versions: {e}")
         return False
+
 
 def list_and_delete_buckets():
     s3 = boto3.resource('s3')
